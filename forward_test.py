@@ -64,6 +64,10 @@ def main():
     stitched_actual = []
     stitched_tfm = []
     stitched_arima = []
+    stitched_tfm_lower = []
+    stitched_tfm_upper = []
+    stitched_arima_lower = []
+    stitched_arima_upper = []
     
     # Lists to store daily error metrics
     tfm_metrics_all = []
@@ -90,11 +94,21 @@ def main():
             inputs=history_list
         )
         tfm_preds = forecast_results[0] # Shape: (num_series, horizon)
+        tfm_quantiles = forecast_results[1] # Shape: (num_series, horizon, 10)
+        tfm_p10 = tfm_quantiles[:, :, 1]
+        tfm_p90 = tfm_quantiles[:, :, 9]
+        # Extrapolate 80% interval (P10 to P90) to 90% interval using Normal distribution scaling
+        # Z-scores: Z_0.90 = 1.64485, Z_0.80 = 1.28155 -> half_width_ratio = 1.64485 / (1.28155 * 2) = 0.6417
+        tfm_half_width_90 = (tfm_p90 - tfm_p10) * 0.6417
+        tfm_lower_90 = tfm_preds - tfm_half_width_90
+        tfm_upper_90 = tfm_preds + tfm_half_width_90
         tfm_time = time.time() - t0
         
-        # 2. Auto ARIMA Forecast (sequential loop)
+        # 2. Auto ARIMA Forecast (sequential loop with prediction intervals)
         t0 = time.time()
         arima_preds = []
+        arima_lower = []
+        arima_upper = []
         for i, col in enumerate(series_cols):
             arima_model = pm.auto_arima(
                 history_list[i],
@@ -103,9 +117,14 @@ def main():
                 suppress_warnings=True,
                 stepwise=True
             )
-            pred = arima_model.predict(n_periods=horizon_len)
+            # return_conf_int=True with alpha=0.10 computes the 90% confidence intervals
+            pred, conf_int = arima_model.predict(n_periods=horizon_len, return_conf_int=True, alpha=0.10)
             arima_preds.append(pred)
+            arima_lower.append(conf_int[:, 0])
+            arima_upper.append(conf_int[:, 1])
         arima_preds = np.array(arima_preds) # Shape: (num_series, horizon)
+        arima_lower = np.array(arima_lower) # Shape: (num_series, horizon)
+        arima_upper = np.array(arima_upper) # Shape: (num_series, horizon)
         arima_time = time.time() - t0
         
         print(f"TimesFM batch inference time: {tfm_time:.2f}s")
@@ -135,6 +154,10 @@ def main():
         stitched_actual.extend(actual_list[viz_idx])
         stitched_tfm.extend(tfm_preds[viz_idx])
         stitched_arima.extend(arima_preds[viz_idx])
+        stitched_tfm_lower.extend(tfm_lower_90[viz_idx])
+        stitched_tfm_upper.extend(tfm_upper_90[viz_idx])
+        stitched_arima_lower.extend(arima_lower[viz_idx])
+        stitched_arima_upper.extend(arima_upper[viz_idx])
         
     # Calculate overall metrics across all windows and series
     tfm_df = pd.DataFrame(tfm_metrics_all)
@@ -176,7 +199,7 @@ This report summarizes the results of a strict forward-testing comparison over a
 
 ---
 ## 🔍 Visualization
-The detailed forecast comparison plot has been saved as `forward_test_comparison.png` in the project root.
+The detailed forecast comparison plot (featuring shaded 90% prediction intervals for both models) has been saved as `forward_test_comparison.png` in the project root.
 """)
     print(f"\nSummary report saved successfully to: {os.path.abspath(summary_md_path)}")
     
@@ -187,9 +210,13 @@ The detailed forecast comparison plot has been saved as `forward_test_comparison
     ax_timeline = plt.subplot2grid((2, 2), (0, 0), colspan=2)
     timestamps = df['timestamp'].iloc[dev_len : dev_len + len(stitched_actual)].values
     
-    ax_timeline.plot(timestamps, stitched_actual, label="Actual Census", color="blue", linewidth=2.0)
-    ax_timeline.plot(timestamps, stitched_tfm, label="TimesFM 2.5 Forecast", color="red", linestyle="--", linewidth=1.5)
-    ax_timeline.plot(timestamps, stitched_arima, label="Auto ARIMA Forecast", color="green", linestyle=":", linewidth=1.5)
+    ax_timeline.plot(timestamps, stitched_actual, label="Actual Census", color="blue", linewidth=2.0, zorder=3)
+    ax_timeline.plot(timestamps, stitched_tfm, label="TimesFM 2.5 Forecast", color="red", linestyle="--", linewidth=1.5, zorder=2)
+    ax_timeline.plot(timestamps, stitched_arima, label="Auto ARIMA Forecast", color="green", linestyle=":", linewidth=1.5, zorder=2)
+    
+    # Shade 90% prediction intervals
+    ax_timeline.fill_between(timestamps, stitched_tfm_lower, stitched_tfm_upper, color="red", alpha=0.12, label="TimesFM 90% PI", zorder=1)
+    ax_timeline.fill_between(timestamps, stitched_arima_lower, stitched_arima_upper, color="green", alpha=0.12, label="Auto ARIMA 90% PI", zorder=1)
     
     # Draw vertical lines for day transitions
     for d in range(1, num_days):

@@ -22,4 +22,4 @@ This report summarizes the results of a strict forward-testing comparison over a
 
 ---
 ## 🔍 Visualization
-The detailed forecast comparison plot has been saved as `forward_test_comparison.png` in the project root.
+The detailed forecast comparison plot (featuring shaded 90% prediction intervals for both models) has been saved as `forward_test_comparison.png` in the project root.
