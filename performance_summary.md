@@ -51,8 +51,22 @@ Below is the visualization of the rolling forecasts for the representative unit 
 
 ---
 
+## 📈 AutoGluon Ensemble vs. Raw Chronos-2 (Forward Testing)
+
+To explore ensembling strategies, we evaluated an **AutoGluon Timeseries Ensemble** (combining Chronos-Bolt, Seasonal Naive, and Theta models) against raw **Chronos-2** on the rolling 24-hour day-ahead forecast over the 5-day hold-out hospital dataset:
+
+| Evaluation Metric | Raw Chronos-2 | AutoGluon Ensemble | Ensemble Gain vs. Chronos-2 |
+| :--- | :---: | :---: | :---: |
+| **MAE** | 1.1258 | **1.0772** | **+4.3%** |
+| **RMSE** | 1.3370 | **1.2889** | **+3.6%** |
+| **MAPE** | 7.70% | **7.40%** | **+3.9%** |
+
+*Note: Ensembling local models (like Theta and Seasonal Naive) with deep learning representation models (Chronos-Bolt) successfully reduced overall error metrics by **3.6% to 4.3%** compared to a raw zero-shot foundation model.*
+
+---
+
 ## 🚀 Recommendations for Hospital Forecasting
 
-1. **Adopt Foundation Models**: For multi-unit and multi-facility hospital operations, **Chronos-2** and **TimesFM 2.5** are highly recommended over traditional statistical baselines due to their superior accuracy and massive throughput advantages.
-2. **Chronos-2 as the Primary Baseline**: Chronos-2 demonstrated the lowest error metrics (MAE/RMSE/MAPE) and the fastest inference speeds on CPU, making it an excellent default foundation model for hospital census workflows.
-3. **MLOps Simplification**: The zero-shot nature of foundation models eliminates the need for periodic retraining pipelines, significantly reducing infrastructure overhead compared to traditional ARIMA models.
+1. **Deploy AutoGluon Ensembles**: Combining pre-trained foundation models with simple local baselines yields the highest forecast accuracy, providing robust guardrails against individual model failures.
+2. **Adopt Foundation Models**: If ensembling pipelines are not yet established, zero-shot models like **Chronos-2** and **TimesFM 2.5** are highly recommended over traditional sequential statistical models due to their superior zero-shot accuracy and computational speed.
+3. **MLOps Simplification**: Pretrained foundation models negate the need for periodic retraining on local data, significantly reducing infrastructure and computation overhead.

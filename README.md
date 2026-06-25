@@ -10,6 +10,7 @@ Hospital census forecasting is crucial for daily staffing, resource allocation, 
 1. **TimesFM 2.5**: A zero-shot foundation model pre-trained on massive time-series corpuses. It requires **no training/fitting** on local data and supports batch inference.
 2. **Chronos-2**: A zero-shot foundation model that outputs quantiles directly in a single forward pass without autoregressive sampling, natively supporting multivariate and covariate forecasting.
 3. **Auto ARIMA**: A classical statistical model from `pmdarima` that fits parameters ($p, d, q$) locally and sequentially for each individual time series.
+4. **AutoGluon Timeseries Ensemble**: An ensembled forecasting pipeline combining pretrained deep representations (Chronos-Bolt) with robust local statistical models (Seasonal Naive, Theta).
 
 ---
 
@@ -32,6 +33,18 @@ The models were evaluated using a rolling 24-hour day-ahead forecast (96 steps) 
 | **Training / Fitting** | **None** (Zero-Shot) | **None** (Zero-Shot) | Fits parameters per window | Foundation models do not require local training, eliminating MLOps retraining pipelines. |
 | **Inference Mode** | **Batch Processing** | **Batch Processing** | Sequential Processing | Both foundation models process all 7 series in parallel. ARIMA must run sequentially. |
 | **Time per Window (7 series)** | **~0.98s** total (~0.14s/series) | **~0.07s** total (~0.01s/series) | **~7.03s** total (~1.00s/series) | **Chronos-2 is ~100x faster** and **TimesFM is ~7x faster** than Auto ARIMA. |
+
+### 3. AutoGluon Ensemble Benchmark (vs. Raw Chronos-2)
+
+In a separate evaluation (configured under Python 3.12), we compared the raw **Chronos-2** model against the ensembled **AutoGluon Timeseries** predictor on the same 5-day hold-out:
+
+| Metric | Raw Chronos-2 | AutoGluon Ensemble | Ensemble Gain vs. Chronos-2 |
+| :--- | :---: | :---: | :---: |
+| **MAE** | 1.1258 | **1.0772** | **+4.3%** |
+| **RMSE** | 1.3370 | **1.2889** | **+3.6%** |
+| **MAPE** | 7.70% | **7.40%** | **+3.9%** |
+
+*For full details and visualization, see [autogluon_ensemble_summary.md](autogluon_ensemble_summary.md) and `autogluon_ensemble_comparison.png`.*
 
 ---
 
@@ -64,6 +77,8 @@ The month-long 15-minute interval dataset exhibits clear daily admissions/discha
 * `plot_hospital_data.py`: Computes hospital census totals and saves the 3-panel profile plot (`hospital_census_plot.png`).
 * `backtest_comparison.py`: Runs walk-forward sliding window backtesting over the development split.
 * `forward_test.py`: Partitions dataset and runs the formal forward-testing daily forecast loop over the hold-out set, generating `forward_test_comparison.png` and `forward_test_summary.md`.
+* `autogluon_ensemble_test.py`: Benchmarks raw Chronos-2 against the AutoGluon Timeseries Ensemble model on the hold-out set, generating `autogluon_ensemble_comparison.png` and `autogluon_ensemble_summary.md`.
+* `autogluon_ensemble_summary.md`: Detailed report comparing raw Chronos-2 against the AutoGluon Ensemble.
 * `test_timesfm.py`: Simple smoke test script to verify TimesFM package and downloads weights from Hugging Face.
 * `requirements.txt`: Package dependencies (`timesfm`, `chronos-forecasting`, `accelerate`, `pmdarima`, `pandas`, `matplotlib`).
 
@@ -72,7 +87,7 @@ The month-long 15-minute interval dataset exhibits clear daily admissions/discha
 ## 🚀 Getting Started
 
 ### 1. Installation
-Ensure you have Python 3.10+ (compatible up to Python 3.14). Create a virtual environment and install the dependencies:
+Ensure you have Python 3.12 (specifically required by AutoGluon). Create a virtual environment and install the dependencies:
 
 ```powershell
 python -m venv .venv
@@ -94,4 +109,9 @@ python backtest_comparison.py
 ### 4. Run Strict Hold-Out Forward Testing
 ```powershell
 python forward_test.py
+```
+
+### 5. Run AutoGluon Ensemble Benchmark
+```powershell
+python autogluon_ensemble_test.py
 ```
