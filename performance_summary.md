@@ -24,7 +24,7 @@ The table below shows the overall average metrics calculated across all 7 series
 | **MAE** (Mean Absolute Error) | **1.2154** | **1.0469** | 1.5347 | **20.8%** | **31.8%** |
 | **RMSE** (Root Mean Squared Error) | **1.4506** | **1.2554** | 1.8339 | **20.9%** | **31.5%** |
 | **MAPE** (Mean Absolute Percentage Error) | **8.99%** | **7.61%** | 11.54% | **22.1%** | **34.1%** |
-| **Average Inference Time** (per window) | **~1.48s** (batch) | **~0.15s** (batch) | **~8.04s** (sequential) | **5.4x faster** | **53.6x faster** |
+| **Average Inference Time** (per window) | **~1.07s** (batch) | **~0.09s** (batch) | **~8.35s** (sequential) | **7.8x faster** | **92.8x faster** |
 
 ---
 
@@ -33,10 +33,10 @@ The table below shows the overall average metrics calculated across all 7 series
 ### 1. Superior Accuracy of Foundation Models
 Both foundation models consistently outperformed Auto ARIMA. **Chronos-2** yielded the lowest overall forecasting error, achieving a **~31.8% lower MAE compared to Auto ARIMA**, and a **~13.9% lower MAE compared to TimesFM 2.5**. TimesFM 2.5 itself achieved a **~20.8% lower MAE compared to Auto ARIMA**. The zero-shot capabilities of both pre-trained foundation models allow them to capture complex hospital census trends without any local training or parameter fitting.
 
-### 2. High Computational Throughput (Batching)
-* **Chronos-2** is extremely efficient, utilizing a non-autoregressive encoder structure to predict all quantiles in a single forward pass. It processed all 7 medsurg series in a single parallel operation in **~0.15 seconds total** (~0.02s per series), making it **53.6x faster** than Auto ARIMA.
-* **TimesFM 2.5** also leverages batch forecasting, processing all 7 series in **~1.48 seconds total** (~0.21s per series), which is **5.4x faster** than Auto ARIMA.
-* **Auto ARIMA** required sequential fitting and parameter search for each series individually, taking **~8.04 seconds** for the 7 series per window.
+### 2. High Computational Throughput (Batching & GPU Acceleration)
+* **Chronos-2** is extremely efficient, utilizing a non-autoregressive encoder structure to predict all quantiles in a single forward pass. Under GPU acceleration, it processed all 7 medsurg series in a single parallel operation in **~0.09 seconds total** (~0.01s per series), making it **92.8x faster** than Auto ARIMA.
+* **TimesFM 2.5** also leverages batch forecasting, processing all 7 series in **~1.07 seconds total** (~0.15s per series) on the GPU, which is **7.8x faster** than Auto ARIMA.
+* **Auto ARIMA** required sequential fitting and parameter search for each series individually, taking **~8.35 seconds** for the 7 series per window.
 * **Scaling Advantage**: As the workload scales to hundreds of units/facilities, Auto ARIMA's CPU runtime scales linearly, creating a significant bottleneck. In contrast, both foundation models support batch inference and GPU acceleration to run in near-constant time.
 
 ---

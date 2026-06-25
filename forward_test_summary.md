@@ -12,8 +12,8 @@ This report summarizes the results of a strict forward-testing comparison over a
 
 | Metric | TimesFM 2.5 | Chronos-2 | Auto ARIMA | TimesFM Gain vs. ARIMA | Chronos-2 Gain vs. ARIMA |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **MAE** | **1.2999** | **1.1237** | 1.6333 | **20.4%** | **31.2%** |
-| **RMSE** | **1.5508** | **1.3350** | 1.9330 | **19.8%** | **41.9%** |
+| **MAE** | **1.2999** | **1.1239** | 1.6333 | **20.4%** | **31.2%** |
+| **RMSE** | **1.5508** | **1.3354** | 1.9330 | **19.8%** | **41.9%** |
 | **MAPE** | **8.89%** | **7.69%** | 11.04% | **19.5%** | **30.4%** |
 
 ## 💡 Key Findings

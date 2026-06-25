@@ -25,13 +25,13 @@ The models were evaluated using a rolling 24-hour day-ahead forecast (96 steps) 
 | **RMSE** (Root Mean Squared Error) | **1.5508** | **1.3350** | 1.9330 | **19.8%** | **30.9%** |
 | **MAPE** (Mean Absolute Percentage Error) | **8.89%** | **7.69%** | 11.04% | **19.5%** | **30.3%** |
 
-### 2. Computational Profile & Speeds (Averaged over 5 days)
+### 2. Computational Profile & Speeds (Averaged over 5 days under GPU Acceleration)
 
 | Profile Area | Google TimesFM 2.5 | Amazon Chronos-2 | Auto ARIMA | Comparison Details |
 | :--- | :---: | :---: | :---: | :--- |
 | **Training / Fitting** | **None** (Zero-Shot) | **None** (Zero-Shot) | Fits parameters per window | Foundation models do not require local training, eliminating MLOps retraining pipelines. |
 | **Inference Mode** | **Batch Processing** | **Batch Processing** | Sequential Processing | Both foundation models process all 7 series in parallel. ARIMA must run sequentially. |
-| **Time per Window (7 series)** | **~1.49s** total (~0.21s/series) | **~0.16s** total (~0.02s/series) | **~7.65s** total (~1.09s/series) | **Chronos-2 is ~48x faster** and **TimesFM is ~5x faster** than Auto ARIMA. |
+| **Time per Window (7 series)** | **~0.98s** total (~0.14s/series) | **~0.07s** total (~0.01s/series) | **~7.03s** total (~1.00s/series) | **Chronos-2 is ~100x faster** and **TimesFM is ~7x faster** than Auto ARIMA. |
 
 ---
 
