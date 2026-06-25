@@ -1,4 +1,4 @@
-# Formal Forward Testing Report: TimesFM 2.5 vs. Auto ARIMA
+# Formal Forward Testing Report: TimesFM 2.5 vs. Chronos-2 vs. Auto ARIMA
 
 This report summarizes the results of a strict forward-testing comparison over a **5-day reserved hold-out set** (June 26 to June 30, 2026) using the multi-hospital census dataset.
 
@@ -10,16 +10,18 @@ This report summarizes the results of a strict forward-testing comparison over a
 
 ## 📈 Overall Accuracy Summary (Averaged over 7 units & 5 days)
 
-| Metric | TimesFM 2.5 | Auto ARIMA | Performance Gain (TimesFM) |
-| :--- | :---: | :---: | :---: |
-| **MAE** | **1.2999** | 1.6333 | **20.4% error reduction** |
-| **RMSE** | **1.5508** | 1.9330 | **19.8% error reduction** |
-| **MAPE** | **8.89%** | 11.04% | **19.5% error reduction** |
+| Metric | TimesFM 2.5 | Chronos-2 | Auto ARIMA | TimesFM Gain vs. ARIMA | Chronos-2 Gain vs. ARIMA |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **MAE** | **1.2999** | **1.1237** | 1.6333 | **20.4%** | **31.2%** |
+| **RMSE** | **1.5508** | **1.3350** | 1.9330 | **19.8%** | **41.9%** |
+| **MAPE** | **8.89%** | **7.69%** | 11.04% | **19.5%** | **30.4%** |
 
 ## 💡 Key Findings
-1. **Robustness on Unseen Data**: TimesFM 2.5 maintains its accuracy edge on the strict hold-out set, proving its capability to generalize well without target overfitting.
-2. **Daily Adaptability**: The rolling 24-hour day-ahead setup shows that TimesFM is a viable plug-and-play solution for daily operational scheduling in hospitals, significantly reducing forecasting errors compared to classical statistical baselines.
+1. **Robustness on Unseen Data**: Both foundation models (TimesFM 2.5 and Chronos-2) maintain a significant accuracy edge on the strict hold-out set compared to Auto ARIMA, proving the power of large-scale pretraining.
+2. **Daily Adaptability**: The rolling 24-hour day-ahead setup shows that foundation models are viable plug-and-play solutions for daily operational scheduling in hospitals, significantly reducing forecasting errors.
 
 ---
 ## 🔍 Visualization
-The detailed forecast comparison plot (featuring shaded 90% prediction intervals for both models) has been saved as `forward_test_comparison.png` in the project root.
+The detailed forecast comparison plot (featuring shaded 90% prediction intervals for all models) has been saved as `forward_test_comparison.png` in the project root.
+
+![Forward Test Timeline Comparison](forward_test_comparison.png)

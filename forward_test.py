@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pmdarima as pm
 import timesfm
+import torch
+from chronos import Chronos2Pipeline
 
 def calculate_metrics(y_true, y_pred):
     """
@@ -56,6 +58,16 @@ def main():
     )
     print("Model compiled successfully.")
     
+    # Load Chronos-2 Model
+    print("\nLoading Chronos-2 model from Hugging Face...")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    chronos_pipeline = Chronos2Pipeline.from_pretrained(
+        "amazon/chronos-2",
+        device_map=device,
+        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32
+    )
+    print("Chronos-2 model loaded successfully.")
+    
     # Choose a representative unit (H1_Medsurg_A) to plot a continuous timeline
     viz_col = "H1_Medsurg_A"
     viz_idx = series_cols.index(viz_col)
@@ -63,14 +75,18 @@ def main():
     # Lists to store stitched results for visual timeline plotting (5 days * 96 steps = 480 steps)
     stitched_actual = []
     stitched_tfm = []
+    stitched_chronos = []
     stitched_arima = []
     stitched_tfm_lower = []
     stitched_tfm_upper = []
+    stitched_chronos_lower = []
+    stitched_chronos_upper = []
     stitched_arima_lower = []
     stitched_arima_upper = []
     
     # Lists to store daily error metrics
     tfm_metrics_all = []
+    chronos_metrics_all = []
     arima_metrics_all = []
     
     # Loop day-by-day through hold-out period
@@ -104,6 +120,27 @@ def main():
         tfm_upper_90 = tfm_preds + tfm_half_width_90
         tfm_time = time.time() - t0
         
+        # 1b. Chronos-2 Batch Forecast
+        t0 = time.time()
+        with torch.no_grad():
+            chronos_forecast = chronos_pipeline.predict(
+                inputs=history_list,
+                prediction_length=horizon_len
+            )
+        chronos_preds = []
+        chronos_lower_90 = []
+        chronos_upper_90 = []
+        for f in chronos_forecast:
+            f_np = f.cpu().numpy()
+            f_np = np.squeeze(f_np, axis=0) # shape (21, horizon)
+            chronos_preds.append(f_np[10, :]) # median is at index 10
+            chronos_lower_90.append(f_np[1, :]) # P5 is at index 1
+            chronos_upper_90.append(f_np[19, :]) # P95 is at index 19
+        chronos_preds = np.array(chronos_preds)
+        chronos_lower_90 = np.array(chronos_lower_90)
+        chronos_upper_90 = np.array(chronos_upper_90)
+        chronos_time = time.time() - t0
+        
         # 2. Auto ARIMA Forecast (sequential loop with prediction intervals)
         t0 = time.time()
         arima_preds = []
@@ -128,54 +165,67 @@ def main():
         arima_time = time.time() - t0
         
         print(f"TimesFM batch inference time: {tfm_time:.2f}s")
+        print(f"Chronos-2 batch inference time: {chronos_time:.2f}s")
         print(f"Auto ARIMA sequential fit time: {arima_time:.2f}s")
         
         # Compute and record daily metrics
         tfm_day_metrics = []
+        chronos_day_metrics = []
         arima_day_metrics = []
         for i, col in enumerate(series_cols):
             tfm_m = calculate_metrics(actual_list[i], tfm_preds[i])
+            chronos_m = calculate_metrics(actual_list[i], chronos_preds[i])
             ari_m = calculate_metrics(actual_list[i], arima_preds[i])
             
             tfm_day_metrics.append(tfm_m)
+            chronos_day_metrics.append(chronos_m)
             arima_day_metrics.append(ari_m)
             
             # Save for overall average
             tfm_metrics_all.append(tfm_m)
+            chronos_metrics_all.append(chronos_m)
             arima_metrics_all.append(ari_m)
             
         tfm_day_avg = pd.DataFrame(tfm_day_metrics).mean()
+        chronos_day_avg = pd.DataFrame(chronos_day_metrics).mean()
         ari_day_avg = pd.DataFrame(arima_day_metrics).mean()
         print(f"Day {d+1} Average Metrics (Across {num_series} units):")
         print(f"  TimesFM   -> MAE: {tfm_day_avg['MAE']:.4f} | RMSE: {tfm_day_avg['RMSE']:.4f} | MAPE: {tfm_day_avg['MAPE']:.2f}%")
+        print(f"  Chronos-2 -> MAE: {chronos_day_avg['MAE']:.4f} | RMSE: {chronos_day_avg['RMSE']:.4f} | MAPE: {chronos_day_avg['MAPE']:.2f}%")
         print(f"  AutoARIMA -> MAE: {ari_day_avg['MAE']:.4f} | RMSE: {ari_day_avg['RMSE']:.4f} | MAPE: {ari_day_avg['MAPE']:.2f}%")
         
         # Collect values for visual stitching
         stitched_actual.extend(actual_list[viz_idx])
         stitched_tfm.extend(tfm_preds[viz_idx])
+        stitched_chronos.extend(chronos_preds[viz_idx])
         stitched_arima.extend(arima_preds[viz_idx])
         stitched_tfm_lower.extend(tfm_lower_90[viz_idx])
         stitched_tfm_upper.extend(tfm_upper_90[viz_idx])
+        stitched_chronos_lower.extend(chronos_lower_90[viz_idx])
+        stitched_chronos_upper.extend(chronos_upper_90[viz_idx])
         stitched_arima_lower.extend(arima_lower[viz_idx])
         stitched_arima_upper.extend(arima_upper[viz_idx])
         
     # Calculate overall metrics across all windows and series
     tfm_df = pd.DataFrame(tfm_metrics_all)
+    chronos_df = pd.DataFrame(chronos_metrics_all)
     ari_df = pd.DataFrame(arima_metrics_all)
     
     tfm_avg = tfm_df.mean()
+    chronos_avg = chronos_df.mean()
     ari_avg = ari_df.mean()
     
     print("\n" + "="*50)
     print("=== FINAL FORWARD TESTING RESULTS OVER HOLD-OUT SET ===")
     print(f"TimesFM 2.5   -> MAE: {tfm_avg['MAE']:.4f} | RMSE: {tfm_avg['RMSE']:.4f} | MAPE: {tfm_avg['MAPE']:.2f}%")
+    print(f"Chronos-2     -> MAE: {chronos_avg['MAE']:.4f} | RMSE: {chronos_avg['RMSE']:.4f} | MAPE: {chronos_avg['MAPE']:.2f}%")
     print(f"Auto ARIMA    -> MAE: {ari_avg['MAE']:.4f} | RMSE: {ari_avg['RMSE']:.4f} | MAPE: {ari_avg['MAPE']:.2f}%")
     print("="*50)
     
     # Save the report to forward_test_summary.md in workspace
     summary_md_path = "forward_test_summary.md"
     with open(summary_md_path, "w", encoding="utf-8") as f:
-        f.write(f"""# Formal Forward Testing Report: TimesFM 2.5 vs. Auto ARIMA
+        f.write(f"""# Formal Forward Testing Report: TimesFM 2.5 vs. Chronos-2 vs. Auto ARIMA
 
 This report summarizes the results of a strict forward-testing comparison over a **5-day reserved hold-out set** (June 26 to June 30, 2026) using the multi-hospital census dataset.
 
@@ -187,19 +237,21 @@ This report summarizes the results of a strict forward-testing comparison over a
 
 ## 📈 Overall Accuracy Summary (Averaged over 7 units & 5 days)
 
-| Metric | TimesFM 2.5 | Auto ARIMA | Performance Gain (TimesFM) |
-| :--- | :---: | :---: | :---: |
-| **MAE** | **{tfm_avg['MAE']:.4f}** | {ari_avg['MAE']:.4f} | **{((ari_avg['MAE'] - tfm_avg['MAE'])/ari_avg['MAE'] * 100):.1f}% error reduction** |
-| **RMSE** | **{tfm_avg['RMSE']:.4f}** | {ari_avg['RMSE']:.4f} | **{((ari_avg['RMSE'] - tfm_avg['RMSE'])/ari_avg['RMSE'] * 100):.1f}% error reduction** |
-| **MAPE** | **{tfm_avg['MAPE']:.2f}%** | {ari_avg['MAPE']:.2f}% | **{((ari_avg['MAPE'] - tfm_avg['MAPE'])/ari_avg['MAPE'] * 100):.1f}% error reduction** |
+| Metric | TimesFM 2.5 | Chronos-2 | Auto ARIMA | TimesFM Gain vs. ARIMA | Chronos-2 Gain vs. ARIMA |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **MAE** | **{tfm_avg['MAE']:.4f}** | **{chronos_avg['MAE']:.4f}** | {ari_avg['MAE']:.4f} | **{((ari_avg['MAE'] - tfm_avg['MAE'])/ari_avg['MAE'] * 100):.1f}%** | **{((ari_avg['MAE'] - chronos_avg['MAE'])/ari_avg['MAE'] * 100):.1f}%** |
+| **RMSE** | **{tfm_avg['RMSE']:.4f}** | **{chronos_avg['RMSE']:.4f}** | {ari_avg['RMSE']:.4f} | **{((ari_avg['RMSE'] - tfm_avg['RMSE'])/ari_avg['RMSE'] * 100):.1f}%** | **{((ari_avg['RMSE'] - chronos_avg['MAE'])/ari_avg['RMSE'] * 100):.1f}%** |
+| **MAPE** | **{tfm_avg['MAPE']:.2f}%** | **{chronos_avg['MAPE']:.2f}%** | {ari_avg['MAPE']:.2f}% | **{((ari_avg['MAPE'] - tfm_avg['MAPE'])/ari_avg['MAPE'] * 100):.1f}%** | **{((ari_avg['MAPE'] - chronos_avg['MAPE'])/ari_avg['MAPE'] * 100):.1f}%** |
 
 ## 💡 Key Findings
-1. **Robustness on Unseen Data**: TimesFM 2.5 maintains its accuracy edge on the strict hold-out set, proving its capability to generalize well without target overfitting.
-2. **Daily Adaptability**: The rolling 24-hour day-ahead setup shows that TimesFM is a viable plug-and-play solution for daily operational scheduling in hospitals, significantly reducing forecasting errors compared to classical statistical baselines.
+1. **Robustness on Unseen Data**: Both foundation models (TimesFM 2.5 and Chronos-2) maintain a significant accuracy edge on the strict hold-out set compared to Auto ARIMA, proving the power of large-scale pretraining.
+2. **Daily Adaptability**: The rolling 24-hour day-ahead setup shows that foundation models are viable plug-and-play solutions for daily operational scheduling in hospitals, significantly reducing forecasting errors.
 
 ---
 ## 🔍 Visualization
-The detailed forecast comparison plot (featuring shaded 90% prediction intervals for both models) has been saved as `forward_test_comparison.png` in the project root.
+The detailed forecast comparison plot (featuring shaded 90% prediction intervals for all models) has been saved as `forward_test_comparison.png` in the project root.
+
+![Forward Test Timeline Comparison](forward_test_comparison.png)
 """)
     print(f"\nSummary report saved successfully to: {os.path.abspath(summary_md_path)}")
     
@@ -212,11 +264,13 @@ The detailed forecast comparison plot (featuring shaded 90% prediction intervals
     
     ax_timeline.plot(timestamps, stitched_actual, label="Actual Census", color="blue", linewidth=2.0, zorder=3)
     ax_timeline.plot(timestamps, stitched_tfm, label="TimesFM 2.5 Forecast", color="red", linestyle="--", linewidth=1.5, zorder=2)
+    ax_timeline.plot(timestamps, stitched_chronos, label="Chronos-2 Forecast", color="purple", linestyle="-.", linewidth=1.5, zorder=2)
     ax_timeline.plot(timestamps, stitched_arima, label="Auto ARIMA Forecast", color="green", linestyle=":", linewidth=1.5, zorder=2)
     
     # Shade 90% prediction intervals
-    ax_timeline.fill_between(timestamps, stitched_tfm_lower, stitched_tfm_upper, color="red", alpha=0.12, label="TimesFM 90% PI", zorder=1)
-    ax_timeline.fill_between(timestamps, stitched_arima_lower, stitched_arima_upper, color="green", alpha=0.12, label="Auto ARIMA 90% PI", zorder=1)
+    ax_timeline.fill_between(timestamps, stitched_tfm_lower, stitched_tfm_upper, color="red", alpha=0.10, label="TimesFM 90% PI", zorder=1)
+    ax_timeline.fill_between(timestamps, stitched_chronos_lower, stitched_chronos_upper, color="purple", alpha=0.10, label="Chronos-2 90% PI", zorder=1)
+    ax_timeline.fill_between(timestamps, stitched_arima_lower, stitched_arima_upper, color="green", alpha=0.10, label="Auto ARIMA 90% PI", zorder=1)
     
     # Draw vertical lines for day transitions
     for d in range(1, num_days):
@@ -242,13 +296,15 @@ The detailed forecast comparison plot (featuring shaded 90% prediction intervals
     ax_bar1 = plt.subplot2grid((2, 2), (1, 0))
     metrics_to_plot = ["MAE", "RMSE"]
     x = np.arange(len(metrics_to_plot))
-    width = 0.35
+    width = 0.25
     
     tfm_vals = [tfm_avg["MAE"], tfm_avg["RMSE"]]
+    chronos_vals = [chronos_avg["MAE"], chronos_avg["RMSE"]]
     ari_vals = [ari_avg["MAE"], ari_avg["RMSE"]]
     
-    ax_bar1.bar(x - width/2, tfm_vals, width, label="TimesFM 2.5", color="red", alpha=0.8)
-    ax_bar1.bar(x + width/2, ari_vals, width, label="Auto ARIMA", color="green", alpha=0.8)
+    ax_bar1.bar(x - width, tfm_vals, width, label="TimesFM 2.5", color="red", alpha=0.8)
+    ax_bar1.bar(x, chronos_vals, width, label="Chronos-2", color="purple", alpha=0.8)
+    ax_bar1.bar(x + width, ari_vals, width, label="Auto ARIMA", color="green", alpha=0.8)
     ax_bar1.set_title("Average MAE & RMSE (Hold-Out)", fontsize=12, fontweight="bold")
     ax_bar1.set_xticks(x)
     ax_bar1.set_xticklabels(metrics_to_plot)
@@ -259,10 +315,11 @@ The detailed forecast comparison plot (featuring shaded 90% prediction intervals
     # 3. MAPE Bar Chart (bottom right)
     ax_bar2 = plt.subplot2grid((2, 2), (1, 1))
     ax_bar2.bar([0], [tfm_avg["MAPE"]], width, label="TimesFM 2.5", color="red", alpha=0.8)
-    ax_bar2.bar([1], [ari_avg["MAPE"]], width, label="Auto ARIMA", color="green", alpha=0.8)
+    ax_bar2.bar([1], [chronos_avg["MAPE"]], width, label="Chronos-2", color="purple", alpha=0.8)
+    ax_bar2.bar([2], [ari_avg["MAPE"]], width, label="Auto ARIMA", color="green", alpha=0.8)
     ax_bar2.set_title("Average MAPE % (Hold-Out)", fontsize=12, fontweight="bold")
-    ax_bar2.set_xticks([0, 1])
-    ax_bar2.set_xticklabels(["TimesFM 2.5", "Auto ARIMA"])
+    ax_bar2.set_xticks([0, 1, 2])
+    ax_bar2.set_xticklabels(["TimesFM 2.5", "Chronos-2", "Auto ARIMA"])
     ax_bar2.set_ylabel("Percentage (%)")
     ax_bar2.legend()
     ax_bar2.grid(True, axis="y", linestyle="--", alpha=0.5)

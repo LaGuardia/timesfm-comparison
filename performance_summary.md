@@ -1,6 +1,6 @@
-# Performance Summary: TimesFM 2.5 vs. Auto ARIMA
+# Performance Summary: TimesFM 2.5 vs. Chronos-2 vs. Auto ARIMA
 
-This report summarizes the comparative evaluation of **Google's TimesFM 2.5 (200M PyTorch model)** and a traditional statistical model, **Auto ARIMA**, on the 15-minute interval multi-hospital census dataset ([hospital_census.csv](file:///c:/Users/brass/OneDrive/Documents/Projects/google timeseries/hospital_census.csv)).
+This report summarizes the comparative evaluation of **Google's TimesFM 2.5 (200M PyTorch model)**, **Amazon's Chronos-2 (120M foundation model)**, and a traditional statistical model, **Auto ARIMA**, on the 15-minute interval multi-hospital census dataset ([hospital_census.csv](file:///c:/Users/brass/OneDrive/Documents/Projects/google timeseries/hospital_census.csv)).
 
 ---
 
@@ -19,24 +19,25 @@ This report summarizes the comparative evaluation of **Google's TimesFM 2.5 (200
 
 The table below shows the overall average metrics calculated across all 7 series and all 4 evaluation windows:
 
-| Evaluation Metric | TimesFM 2.5 | Auto ARIMA | Performance Gain (TimesFM) |
-| :--- | :---: | :---: | :---: |
-| **MAE** (Mean Absolute Error) | **1.2154** | 1.5347 | **20.8% error reduction** |
-| **RMSE** (Root Mean Squared Error) | **1.4506** | 1.8339 | **20.9% error reduction** |
-| **MAPE** (Mean Absolute Percentage Error) | **8.99%** | 11.54% | **22.1% error reduction** |
-| **Average Inference Time** (per window) | **~1.41s** (batch) | **~7.88s** (sequential) | **5.5x faster throughput** |
+| Evaluation Metric | TimesFM 2.5 | Chronos-2 | Auto ARIMA | TimesFM Gain vs. ARIMA | Chronos-2 Gain vs. ARIMA |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **MAE** (Mean Absolute Error) | **1.2154** | **1.0469** | 1.5347 | **20.8%** | **31.8%** |
+| **RMSE** (Root Mean Squared Error) | **1.4506** | **1.2554** | 1.8339 | **20.9%** | **31.5%** |
+| **MAPE** (Mean Absolute Percentage Error) | **8.99%** | **7.61%** | 11.54% | **22.1%** | **34.1%** |
+| **Average Inference Time** (per window) | **~1.48s** (batch) | **~0.15s** (batch) | **~8.04s** (sequential) | **5.4x faster** | **53.6x faster** |
 
 ---
 
 ## 💡 Key Performance Observations
 
-### 1. Superior Accuracy
-TimesFM 2.5 consistently outperformed Auto ARIMA in all evaluation windows, yielding a **~21% lower overall forecasting error**. TimesFM's pre-trained weights enable it to capture complex, overlapping daily (24h) and weekly (168h) seasonality cycles present in hospital admission/discharge workflows without requiring any explicit parameter tuning or model training.
+### 1. Superior Accuracy of Foundation Models
+Both foundation models consistently outperformed Auto ARIMA. **Chronos-2** yielded the lowest overall forecasting error, achieving a **~31.8% lower MAE compared to Auto ARIMA**, and a **~13.9% lower MAE compared to TimesFM 2.5**. TimesFM 2.5 itself achieved a **~20.8% lower MAE compared to Auto ARIMA**. The zero-shot capabilities of both pre-trained foundation models allow them to capture complex hospital census trends without any local training or parameter fitting.
 
 ### 2. High Computational Throughput (Batching)
-* **TimesFM 2.5** leverages PyTorch and is compiled to perform batch forecasting. It processed all 7 medsurg series in a single parallel operation, requiring only **~0.20 seconds per series** (total ~1.41s for all 7 series).
-* **Auto ARIMA** was evaluated sequentially, fitting a new ARIMA model for each series in each window. This took an average of **~7.88 seconds** for all 7 series per window.
-* **Scaling Advantage**: As the number of units/hospitals scales from 7 to hundreds, Auto ARIMA's computation time will scale linearly (becoming a major bottleneck), while TimesFM can utilize GPU acceleration and batching to scale with near-constant inference times.
+* **Chronos-2** is extremely efficient, utilizing a non-autoregressive encoder structure to predict all quantiles in a single forward pass. It processed all 7 medsurg series in a single parallel operation in **~0.15 seconds total** (~0.02s per series), making it **53.6x faster** than Auto ARIMA.
+* **TimesFM 2.5** also leverages batch forecasting, processing all 7 series in **~1.48 seconds total** (~0.21s per series), which is **5.4x faster** than Auto ARIMA.
+* **Auto ARIMA** required sequential fitting and parameter search for each series individually, taking **~8.04 seconds** for the 7 series per window.
+* **Scaling Advantage**: As the workload scales to hundreds of units/facilities, Auto ARIMA's CPU runtime scales linearly, creating a significant bottleneck. In contrast, both foundation models support batch inference and GPU acceleration to run in near-constant time.
 
 ---
 
@@ -46,11 +47,12 @@ Below is the visualization of the rolling forecasts for the representative unit 
 
 ![Hospital Census Backtest Comparison Plot](timesfm_vs_arima_backtest.png)
 
-*The plot displays the last 50 historical steps in black (for context), the actual target values in blue, TimesFM 2.5 forecasts in red (dashed), and Auto ARIMA forecasts in green (dotted).*
+*The plot displays the last 50 historical steps in black (for context), the actual target values in blue, TimesFM 2.5 forecasts in red (dashed), Chronos-2 forecasts in purple (dash-dotted), and Auto ARIMA forecasts in green (dotted).*
 
 ---
 
 ## 🚀 Recommendations for Hospital Forecasting
 
-1. **Deploy Foundation Models for Scaling**: For multi-unit and multi-facility hospital operations, **TimesFM 2.5** is the recommended choice due to its high zero-shot accuracy and batching capabilities.
-2. **Resource Optimization**: The zero-shot nature of TimesFM removes the need for periodic retraining pipelines, significantly reducing MLOps infrastructure overhead compared to traditional models that require fitting models individually for each unit.
+1. **Adopt Foundation Models**: For multi-unit and multi-facility hospital operations, **Chronos-2** and **TimesFM 2.5** are highly recommended over traditional statistical baselines due to their superior accuracy and massive throughput advantages.
+2. **Chronos-2 as the Primary Baseline**: Chronos-2 demonstrated the lowest error metrics (MAE/RMSE/MAPE) and the fastest inference speeds on CPU, making it an excellent default foundation model for hospital census workflows.
+3. **MLOps Simplification**: The zero-shot nature of foundation models eliminates the need for periodic retraining pipelines, significantly reducing infrastructure overhead compared to traditional ARIMA models.
